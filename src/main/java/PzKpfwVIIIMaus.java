@@ -8,7 +8,11 @@ import dev.zwazel.internal.connection.client.ConnectedClientConfig;
 import dev.zwazel.internal.debug.MapVisualiser;
 import dev.zwazel.internal.game.lobby.TeamConfig;
 import dev.zwazel.internal.game.map.MapDefinition;
+import dev.zwazel.internal.game.map.marker.FlagBase;
 import dev.zwazel.internal.game.state.ClientState;
+import dev.zwazel.internal.game.state.FlagBaseState;
+import dev.zwazel.internal.game.state.FlagGameState;
+import dev.zwazel.internal.game.state.flag.FlagState;
 import dev.zwazel.internal.game.tank.Tank;
 import dev.zwazel.internal.game.tank.TankConfig;
 import dev.zwazel.internal.game.tank.implemented.HeavyTank;
@@ -29,7 +33,7 @@ import java.util.Optional;
 
 import static dev.zwazel.internal.message.MessageTarget.Type.CLIENT;
 
-public class MyBot implements BotInterface {
+public class PzKpfwVIIIMaus implements BotInterface {
     private final PropertyHandler propertyHandler = PropertyHandler.getInstance();
     private final float minAttackDistance;
     private final float maxAttackDistance;
@@ -37,13 +41,13 @@ public class MyBot implements BotInterface {
     private List<ConnectedClientConfig> enemyTeamMembers;
     private MapVisualiser visualiser;
 
-    public MyBot() {
+    public PzKpfwVIIIMaus() {
         this.minAttackDistance = Float.parseFloat(propertyHandler.getProperty("bot.attack.minDistance"));
         this.maxAttackDistance = Float.parseFloat(propertyHandler.getProperty("bot.attack.maxDistance"));
     }
 
     public static void main(String[] args) {
-        MyBot bot = new MyBot();
+        PzKpfwVIIIMaus bot = new PzKpfwVIIIMaus();
 
         GameWorld.startGame(bot); // This starts the game with a LightTank, and immediately starts the game when connected
         // GameWorld.connectToServer(bot); // This connects to the server with a LightTank, but does not immediately start the game

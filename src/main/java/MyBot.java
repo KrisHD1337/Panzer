@@ -20,7 +20,7 @@ import java.util.Optional;
 
 import static dev.zwazel.internal.message.MessageTarget.Type.CLIENT;
 
-public class MyBot implements BotInterface {
+public class PzKpfwVIIIMaus implements BotInterface {
     private final PropertyHandler propertyHandler = PropertyHandler.getInstance();
     private final float minAttackDistance;
     private final float maxAttackDistance;

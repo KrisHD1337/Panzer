@@ -30,8 +30,8 @@
         <server>
             <id>github</id>
             <!--Either set the environment Variable or just replace with your username and GitHub Token-->
-            <username>${env.GITHUB_USERNAME}</username>
-            <password>${env.GITHUB_TOKEN}</password>
+            <username>KrisHD1337</username>
+            <password>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</password>
         </server>
     </servers>
 </settings>

@@ -2,19 +2,32 @@ import dev.zwazel.GameWorld;
 import dev.zwazel.PropertyHandler;
 import dev.zwazel.bot.BotInterface;
 import dev.zwazel.internal.PublicGameWorld;
+import dev.zwazel.internal.config.LobbyConfig;
+import dev.zwazel.internal.config.LocalBotConfig;
 import dev.zwazel.internal.connection.client.ConnectedClientConfig;
+import dev.zwazel.internal.debug.MapVisualiser;
 import dev.zwazel.internal.game.lobby.TeamConfig;
+import dev.zwazel.internal.game.map.MapDefinition;
+import dev.zwazel.internal.game.map.marker.FlagBase;
 import dev.zwazel.internal.game.state.ClientState;
+import dev.zwazel.internal.game.state.FlagBaseState;
+import dev.zwazel.internal.game.state.FlagGameState;
+import dev.zwazel.internal.game.state.flag.FlagState;
 import dev.zwazel.internal.game.tank.Tank;
 import dev.zwazel.internal.game.tank.TankConfig;
-import dev.zwazel.internal.game.tank.implemented.LightTank;
+import dev.zwazel.internal.game.tank.implemented.HeavyTank;
+import dev.zwazel.internal.game.transform.Vec3;
+import dev.zwazel.internal.game.utils.Graph;
+import dev.zwazel.internal.game.utils.Node;
 import dev.zwazel.internal.message.MessageContainer;
 import dev.zwazel.internal.message.MessageData;
 import dev.zwazel.internal.message.data.GameConfig;
+import dev.zwazel.internal.message.data.GameState;
 import dev.zwazel.internal.message.data.SimpleTextMessage;
 import dev.zwazel.internal.message.data.tank.GotHit;
 import dev.zwazel.internal.message.data.tank.Hit;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,18 +37,42 @@ public class PzKpfwVIIIMaus implements BotInterface {
     private final PropertyHandler propertyHandler = PropertyHandler.getInstance();
     private final float minAttackDistance;
     private final float maxAttackDistance;
-
     private List<ConnectedClientConfig> teamMembers;
     private List<ConnectedClientConfig> enemyTeamMembers;
+    private MapVisualiser visualiser;
 
-    public MyBot() {
+    public PzKpfwVIIIMaus() {
         this.minAttackDistance = Float.parseFloat(propertyHandler.getProperty("bot.attack.minDistance"));
         this.maxAttackDistance = Float.parseFloat(propertyHandler.getProperty("bot.attack.maxDistance"));
     }
 
-    public void start() {
-        // GameWorld.startGame(this, LightTank.class); // This starts the game with a LightTank, and immediately starts the game when connected
-        GameWorld.connectToServer(this, LightTank.class); // This connects to the server with a LightTank, but does not immediately start the game
+    public static void main(String[] args) {
+        PzKpfwVIIIMaus bot = new PzKpfwVIIIMaus();
+
+        GameWorld.startGame(bot); // This starts the game with a LightTank, and immediately starts the game when connected
+        // GameWorld.connectToServer(bot); // This connects to the server with a LightTank, but does not immediately start the game
+    }
+
+    @Override
+    public LocalBotConfig getLocalBotConfig() {
+        return LocalBotConfig.builder()
+                .debugMode(Optional.ofNullable(propertyHandler.getProperty("debug.mode"))
+                        .map(GameWorld.DebugMode::valueOf))
+                .botName(propertyHandler.getProperty("bot.name"))
+                .tankType(HeavyTank.class)
+                .serverIp(propertyHandler.getProperty("server.ip"))
+                .serverPort(Integer.parseInt(propertyHandler.getProperty("server.port")))
+                .lobbyConfig(LobbyConfig.builder()
+                        .lobbyName(propertyHandler.getProperty("lobby.name"))
+                        .teamName(propertyHandler.getProperty("lobby.name"))
+                        .teamName(propertyHandler.getProperty("lobby.team.name"))
+                        .mapName(propertyHandler.getProperty("lobby.map.name"))
+                        .spawnPoint(Optional.ofNullable(propertyHandler.getProperty("lobby.spawnPoint"))
+                                .map(Integer::parseInt))
+                        .fillEmptySlots(Boolean.parseBoolean(propertyHandler.getProperty("lobby.fillEmptySlots")))
+                        .build()
+                )
+                .build();
     }
 
     @Override
@@ -52,22 +89,58 @@ public class PzKpfwVIIIMaus implements BotInterface {
         teamMembers = config.getTeamMembers(myTeamConfig.teamName(), config.clientId());
         // Get all enemy team members
         enemyTeamMembers = config.getTeamMembers(enemyTeamConfig.teamName());
+
+        if (world.isDebug()) {
+            // Add visualiser. By pressing space, you can switch between drawing modes.
+            visualiser = new MapVisualiser(world);
+            visualiser.setDrawingMode(MapVisualiser.DrawingMode.valueOf(propertyHandler.getProperty("debug.visualiser.mode").toUpperCase()));
+            world.registerVisualiser(visualiser);
+            visualiser.setMaxWindowHeight(1000);
+            visualiser.setMaxWindowWidth(1200);
+            visualiser.showMap();
+        }
     }
 
     @Override
     public void processTick(PublicGameWorld world) {
+        MapDefinition map = world.getGameConfig().mapDefinition();
+
+        GameState state = world.getGameState();
+        Vec3 pos = new Vec3(10, 10 ,10);
+
+
         ClientState myClientState = world.getMyState();
+
+        Graph graph = new Graph(map, false);
+
+
+        LinkedList<Node> path = new AStar().findPath(map, graph, world.getGameConfig().mapDefinition().getClosestTileFromWorld(
+                    myClientState.transformBody().getTranslation()), pos);
+
+        if (visualiser != null) {
+            // sets the path to be visualised
+            visualiser.setPath(path);
+            visualiser.setGraph(graph);
+        }
 
         if (myClientState.state() == ClientState.PlayerState.DEAD) {
             System.out.println("I'm dead!");
             return;
         }
 
-        LightTank tank = (LightTank) world.getTank();
-        // HeavyTank tank = (HeavyTank) world.getTank();
+        if (world.isDebug()) {
+            Vec3 myGridPosition = world.getGameConfig().mapDefinition().getClosestTileFromWorld(
+                    myClientState.transformBody().getTranslation()
+            );
+        }
+
+        // LightTank tank = (LightTank) world.getTank();
+        HeavyTank maus = (HeavyTank) world.getTank();
         // SelfPropelledArtillery tank = (SelfPropelledArtillery) world.getTank();
-        TankConfig myTankConfig = tank.getConfig(world);
+        TankConfig myTankConfig = maus.getConfig(world);
+
         GameConfig config = world.getGameConfig();
+
 
         // Get the closest enemy tank
         Optional<ClientState> closestEnemy = enemyTeamMembers.stream()
@@ -87,21 +160,15 @@ public class PzKpfwVIIIMaus implements BotInterface {
                     // If enemy is within attack range, shoot; otherwise, move accordingly
                     double distanceToEnemy = myClientState.transformBody().getTranslation().distance(enemy.transformBody().getTranslation());
 
-                    if (distanceToEnemy < this.minAttackDistance) {
-                        // Move away from enemy if too close
-                        tank.moveTowards(world, Tank.MoveDirection.BACKWARD, enemy.transformBody().getTranslation(), true);
-                    } else if (distanceToEnemy > this.maxAttackDistance) {
-                        // Move towards enemy if too far
-                        tank.moveTowards(world, Tank.MoveDirection.FORWARD, enemy.transformBody().getTranslation(), true);
-                    }
-                    tank.rotateTurretTowards(world, enemy.transformBody().getTranslation());
+
+                    // maus.rotateTurretTowards(world, enemy.transformBody().getTranslation());
 
                     if (distanceToEnemy <= this.maxAttackDistance) {
                         // You can check if you can shoot before shooting
-                        if (tank.canShoot(world)) {
+                        if (maus.canShoot(world)) {
                             // Or also just shoot, it will return false if you can't shoot.
                             // And by checking the world, if debug is enabled, you can print out a message.
-                            if (tank.shoot(world) && world.isDebug()) {
+                            if (maus.shoot(world) && world.isDebug()) {
                                 System.out.println("Shot at enemy!");
                             }
                         }
@@ -109,8 +176,8 @@ public class PzKpfwVIIIMaus implements BotInterface {
                 },
                 () -> {
                     // No enemies found, move in a circle (negative is clockwise for yaw rotation)
-                    tank.rotateBody(world, -myTankConfig.bodyRotationSpeed());
-                    tank.move(world, Tank.MoveDirection.FORWARD);
+                    maus.rotateBody(world, -myTankConfig.bodyRotationSpeed());
+                    maus.move(world, Tank.MoveDirection.FORWARD);
                 }
         );
 

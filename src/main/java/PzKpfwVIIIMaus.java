@@ -8,7 +8,6 @@ import dev.zwazel.internal.connection.client.ConnectedClientConfig;
 import dev.zwazel.internal.debug.MapVisualiser;
 import dev.zwazel.internal.game.lobby.TeamConfig;
 import dev.zwazel.internal.game.map.MapDefinition;
-import dev.zwazel.internal.game.map.marker.FlagBase;
 import dev.zwazel.internal.game.state.ClientState;
 import dev.zwazel.internal.game.state.FlagBaseState;
 import dev.zwazel.internal.game.state.FlagGameState;
@@ -16,6 +15,7 @@ import dev.zwazel.internal.game.state.flag.FlagState;
 import dev.zwazel.internal.game.tank.Tank;
 import dev.zwazel.internal.game.tank.TankConfig;
 import dev.zwazel.internal.game.tank.implemented.HeavyTank;
+import dev.zwazel.internal.game.transform.Transform;
 import dev.zwazel.internal.game.transform.Vec3;
 import dev.zwazel.internal.game.utils.Graph;
 import dev.zwazel.internal.game.utils.Node;
@@ -26,6 +26,7 @@ import dev.zwazel.internal.message.data.GameState;
 import dev.zwazel.internal.message.data.SimpleTextMessage;
 import dev.zwazel.internal.message.data.tank.GotHit;
 import dev.zwazel.internal.message.data.tank.Hit;
+import dev.zwazel.internal.message.data.tank.MoveTankCommand;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -49,8 +50,8 @@ public class PzKpfwVIIIMaus implements BotInterface {
     public static void main(String[] args) {
         PzKpfwVIIIMaus bot = new PzKpfwVIIIMaus();
 
-        GameWorld.startGame(bot); // This starts the game with a LightTank, and immediately starts the game when connected
-        // GameWorld.connectToServer(bot); // This connects to the server with a LightTank, but does not immediately start the game
+        // GameWorld.startGame(bot); // This starts the game with a LightTank, and immediately starts the game when connected
+        GameWorld.connectToServer(bot); // This connects to the server with a LightTank, but does not immediately start the game
     }
 
     @Override
@@ -103,25 +104,14 @@ public class PzKpfwVIIIMaus implements BotInterface {
 
     @Override
     public void processTick(PublicGameWorld world) {
+        HeavyTank maus = (HeavyTank) world.getTank();
         MapDefinition map = world.getGameConfig().mapDefinition();
 
         GameState state = world.getGameState();
-        Vec3 pos = new Vec3(10, 10 ,10);
 
 
         ClientState myClientState = world.getMyState();
 
-        Graph graph = new Graph(map, false);
-
-
-        LinkedList<Node> path = new AStar().findPath(map, graph, world.getGameConfig().mapDefinition().getClosestTileFromWorld(
-                    myClientState.transformBody().getTranslation()), pos);
-
-        if (visualiser != null) {
-            // sets the path to be visualised
-            visualiser.setPath(path);
-            visualiser.setGraph(graph);
-        }
 
         if (myClientState.state() == ClientState.PlayerState.DEAD) {
             System.out.println("I'm dead!");
@@ -135,7 +125,7 @@ public class PzKpfwVIIIMaus implements BotInterface {
         }
 
         // LightTank tank = (LightTank) world.getTank();
-        HeavyTank maus = (HeavyTank) world.getTank();
+
         // SelfPropelledArtillery tank = (SelfPropelledArtillery) world.getTank();
         TankConfig myTankConfig = maus.getConfig(world);
 
@@ -154,14 +144,33 @@ public class PzKpfwVIIIMaus implements BotInterface {
                     return Double.compare(distance1, distance2);
                 });
 
+        Graph graph = new Graph(map, true);
+
+
         // Move towards the closest enemy and shoot when close enough, or move in a circle if no enemies are found
         closestEnemy.ifPresentOrElse(
                 enemy -> {
                     // If enemy is within attack range, shoot; otherwise, move accordingly
                     double distanceToEnemy = myClientState.transformBody().getTranslation().distance(enemy.transformBody().getTranslation());
+                    Node start = graph.getNode(myClientState.transformBody().getTranslation().getX(), myClientState.transformBody().getTranslation().getZ());
+                    Node end = graph.getNode(enemy.transformBody().getTranslation().getX(), enemy.transformBody().getTranslation().getZ());
 
+                    LinkedList<Node> path = AStar.findPath(graph, start, end);
 
-                    // maus.rotateTurretTowards(world, enemy.transformBody().getTranslation());
+                    path.poll();
+                    Node next = path.peek();
+                    if (next != null) {
+                        Vec3 nextpos = map.getWorldTileCenter(next.getX(), next.getY());
+                        maus.moveTowards(world, nextpos, true);
+
+                    }
+                    if (visualiser != null) {
+                        // sets the path to be visualised
+                        visualiser.setPath(path);
+                        visualiser.setGraph(graph);
+                    }
+
+                    maus.rotateTurretTowards(world, enemy.transformBody().getTranslation());
 
                     if (distanceToEnemy <= this.maxAttackDistance) {
                         // You can check if you can shoot before shooting
@@ -177,7 +186,7 @@ public class PzKpfwVIIIMaus implements BotInterface {
                 () -> {
                     // No enemies found, move in a circle (negative is clockwise for yaw rotation)
                     maus.rotateBody(world, -myTankConfig.bodyRotationSpeed());
-                    maus.move(world, Tank.MoveDirection.FORWARD);
+
                 }
         );
 
